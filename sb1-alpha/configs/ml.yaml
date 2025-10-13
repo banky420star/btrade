@@ -1,0 +1,52 @@
+# ML Configuration
+features:
+  technical_indicators:
+    - rsi
+    - macd
+    - stoch
+    - ema_5
+    - ema_20
+    - ema_50
+    - atr
+    - bb_position
+    - volume_zscore
+  price_features:
+    - returns_1
+    - returns_3
+    - returns_5
+    - high_low_ratio
+    - close_open_ratio
+
+labeling:
+  horizon: 3  # bars ahead
+  threshold: 0.001  # minimum move to label as signal
+
+model:
+  type: xgboost
+  params:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    tree_method: hist
+    random_state: 42
+  validation:
+    test_size: 0.2
+    cv_folds: 5
+    walk_forward: true
+
+calibration:
+  method: isotonic
+  cv_folds: 3
+
+training:
+  retrain_hours: 24
+  min_samples: 1000
+  max_samples: 10000
+  validation_split: 0.2
+
+inference:
+  confidence_threshold: 0.6
+  batch_size: 100
+  update_frequency: 60  # seconds
