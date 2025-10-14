@@ -1,0 +1,41 @@
+{
+  "symbols": [
+    "BTC/USDT",
+    "ETH/USDT", 
+    "BNB/USDT",
+    "ADA/USDT",
+    "SOL/USDT",
+    "EUR/USD",
+    "GBP/USD",
+    "USD/JPY",
+    "AUD/USD",
+    "USD/CAD"
+  ],
+  "timeframes": ["1m", "5m", "15m", "1h"],
+  "max_positions": 10,
+  "max_position_size": 0.1,
+  "min_confidence": 0.6,
+  "stop_loss": 0.02,
+  "take_profit": 0.06,
+  "trailing_stop": true,
+  "trailing_stop_distance": 0.01,
+  "rebalance_frequency": 300,
+  "growth_optimization": {
+    "enabled": true,
+    "target_annual_return": 0.5,
+    "risk_adjusted_return": true,
+    "kelly_criterion": true,
+    "position_sizing": "adaptive",
+    "momentum_factor": 0.1,
+    "mean_reversion_factor": 0.05,
+    "trend_following_factor": 0.15
+  },
+  "risk_limits": {
+    "max_daily_loss": 0.05,
+    "max_position_risk": 0.02,
+    "max_correlation": 0.7,
+    "max_sector_exposure": 0.3,
+    "var_limit": 0.03,
+    "stress_test_limit": 0.1
+  }
+}

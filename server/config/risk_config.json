@@ -1,0 +1,30 @@
+{
+  "max_position_size": 0.1,
+  "max_total_exposure": 0.8,
+  "max_daily_loss": 0.05,
+  "max_weekly_loss": 0.15,
+  "max_monthly_loss": 0.25,
+  "max_drawdown": 0.2,
+  "max_correlation": 0.7,
+  "max_sector_exposure": 0.3,
+  "max_currency_exposure": 0.5,
+  "var_limit": 0.03,
+  "stress_test_limit": 0.1,
+  "max_leverage": 3.0,
+  "min_liquidity": 1000000,
+  "max_volatility": 0.05,
+  "min_confidence": 0.6,
+  "max_consecutive_losses": 5,
+  "max_positions": 10,
+  "position_timeout": 86400000,
+  "monitoring": {
+    "enabled": true,
+    "check_interval": 10000,
+    "alert_thresholds": {
+      "exposure": 0.7,
+      "drawdown": 0.15,
+      "var": 0.025,
+      "consecutive_losses": 3
+    }
+  }
+}
