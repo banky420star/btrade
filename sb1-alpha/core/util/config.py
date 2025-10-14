@@ -10,6 +10,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def load_dotenv(env_file: str):
+    """Load environment variables from file."""
+    try:
+        from dotenv import load_dotenv as _load_dotenv
+        _load_dotenv(env_file)
+    except ImportError:
+        # Fallback implementation
+        if os.path.exists(env_file):
+            with open(env_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key.strip()] = value.strip()
+
 @dataclass
 class Config:
     """Main configuration class with type safety and validation."""

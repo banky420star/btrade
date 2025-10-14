@@ -7,6 +7,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
 from core.util.logger import get_logger
 from core.util.config import get_config
 

@@ -7,7 +7,6 @@ tensorflow>=2.13.0
 
 # Data and Technical Analysis
 ccxt>=4.0.0
-ta-lib>=0.4.25
 yfinance>=0.2.0
 
 # RL Dependencies
@@ -17,7 +16,6 @@ torch>=2.0.0
 
 # Data Integrity and Validation
 cryptography>=41.0.0
-hashlib-compat>=1.0.0
 
 # API and Web
 requests>=2.31.0
@@ -33,3 +31,6 @@ structlog>=23.0.0
 click>=8.1.0
 tqdm>=4.65.0
 joblib>=1.3.0
+
+# Optional dependencies (install separately if needed)
+# ta-lib>=0.4.25  # Requires system dependencies
