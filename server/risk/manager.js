@@ -36,42 +36,92 @@ class RiskManager {
     this.logger.info('Risk configuration loaded', this.config)
   }
 
-  // Position sizing using Kelly Criterion
-  calculatePositionSize(symbol, entryPrice, stopLoss, winRate, avgWin, avgLoss) {
+  // Advanced Position Sizing using Kelly Criterion with Multiple Factors
+  calculatePositionSize(symbol, entryPrice, stopLoss, winRate, avgWin, avgLoss, metadata = {}) {
     if (this.config.emergencyStop) {
       return 0
     }
 
-    // Calculate Kelly fraction
-    const kellyFraction = this.calculateKellyFraction(winRate, avgWin, avgLoss)
-    const adjustedKelly = Math.min(kellyFraction, this.config.kellyFraction)
+    // Get additional risk factors
+    const volatility = metadata.volatility || 0.1
+    const confidence = metadata.confidence || 0.5
+    const analysis = metadata.analysis || {}
+    const strategy = metadata.strategy || 'unknown'
+    
+    // Calculate base Kelly fraction
+    const baseKellyFraction = this.calculateKellyFraction(winRate, avgWin, avgLoss)
+    
+    // Apply confidence adjustment
+    const confidenceAdjustedKelly = baseKellyFraction * confidence
+    
+    // Apply volatility adjustment (higher volatility = smaller position)
+    const volatilityAdjustment = Math.max(0.1, 1 - (volatility * 2))
+    const volatilityAdjustedKelly = confidenceAdjustedKelly * volatilityAdjustment
+    
+    // Apply analysis strength adjustment
+    const strengthAdjustment = analysis.overallStrength || 0.5
+    const strengthAdjustedKelly = volatilityAdjustedKelly * (0.5 + strengthAdjustment)
+    
+    // Apply strategy-specific adjustments
+    const strategyAdjustment = this.getStrategyRiskAdjustment(strategy)
+    const strategyAdjustedKelly = strengthAdjustedKelly * strategyAdjustment
+    
+    // Apply correlation adjustment
+    const correlationAdjustment = this.getCorrelationAdjustment(symbol)
+    const correlationAdjustedKelly = strategyAdjustedKelly * correlationAdjustment
+    
+    // Apply drawdown adjustment
+    const drawdownAdjustment = this.getDrawdownAdjustment()
+    const drawdownAdjustedKelly = correlationAdjustedKelly * drawdownAdjustment
+    
+    // Final Kelly fraction with limits
+    const finalKellyFraction = Math.min(
+      Math.max(drawdownAdjustedKelly, 0.01), // Minimum 1%
+      this.config.kellyFraction // Maximum Kelly fraction
+    )
     
     // Calculate position size based on risk
     const riskAmount = this.account.equity * this.config.maxPositionSize
     const stopDistance = Math.abs(entryPrice - stopLoss)
-    const positionSize = riskAmount / stopDistance
+    const basePositionSize = riskAmount / stopDistance
     
     // Apply Kelly sizing
-    const kellySize = this.account.equity * adjustedKelly
-    const finalSize = Math.min(positionSize, kellySize)
+    const kellySize = this.account.equity * finalKellyFraction
+    const finalSize = Math.min(basePositionSize, kellySize)
     
-    // Ensure we don't exceed maximum position size
+    // Apply maximum position size limit
     const maxSize = this.account.equity * this.config.maxPositionSize
     const finalPositionSize = Math.min(finalSize, maxSize)
     
-    this.logger.debug('Position size calculation', {
+    // Apply minimum position size
+    const minSize = this.account.equity * 0.001 // 0.1% minimum
+    const finalPositionSizeWithMin = Math.max(finalPositionSize, minSize)
+    
+    this.logger.debug('Advanced position size calculation', {
       symbol,
       entryPrice,
       stopLoss,
       winRate,
       avgWin,
       avgLoss,
-      kellyFraction: adjustedKelly,
+      volatility,
+      confidence,
+      strategy,
+      baseKellyFraction,
+      finalKellyFraction,
       riskAmount,
-      positionSize: finalPositionSize
+      positionSize: finalPositionSizeWithMin,
+      adjustments: {
+        confidence: confidenceAdjustedKelly / baseKellyFraction,
+        volatility: volatilityAdjustment,
+        strength: strengthAdjustment,
+        strategy: strategyAdjustment,
+        correlation: correlationAdjustment,
+        drawdown: drawdownAdjustment
+      }
     })
     
-    return Math.max(0, finalPositionSize)
+    return Math.max(0, finalPositionSizeWithMin)
   }
 
   calculateKellyFraction(winRate, avgWin, avgLoss) {
@@ -87,15 +137,79 @@ class RiskManager {
     return Math.max(0, kelly)
   }
 
-  // Risk checks before opening position
-  canOpenPosition(symbol, side, size, entryPrice) {
+  // Strategy-specific risk adjustments
+  getStrategyRiskAdjustment(strategy) {
+    const adjustments = {
+      'momentum_breakout': 1.2,      // Higher risk, higher reward
+      'momentum_continuation': 1.1,  // Good momentum
+      'momentum_reversal': 0.8,      // Reversal is risky
+      'mean_reversion_bb': 0.9,      // Mean reversion is moderate risk
+      'mean_reversion_rsi': 0.9,     // RSI mean reversion
+      'mean_reversion_stochastic': 0.9,
+      'scalping_momentum': 1.3,      // Scalping is high risk
+      'scalping_mean_reversion': 1.1,
+      'scalping_breakout': 1.2,
+      'trend_following_ma': 0.8,     // Trend following is lower risk
+      'trend_following_ichimoku': 0.8,
+      'trend_following_adx': 0.9,
+      'volatility_breakout': 1.1,    // Volatility strategies
+      'volatility_squeeze': 1.0,
+      'volatility_expansion': 1.1,
+      'news_sentiment': 0.7,         // News trading is risky
+      'economic_calendar': 0.7,
+      'multi_timeframe_trend': 0.6,  // Multi-timeframe is safer
+      'multi_timeframe_momentum': 0.8,
+      'divergence': 0.9,             // Divergence strategies
+      'unknown': 1.0                 // Default
+    }
+    
+    return adjustments[strategy] || 1.0
+  }
+
+  // Correlation-based risk adjustment
+  getCorrelationAdjustment(symbol) {
+    const correlatedPositions = this.positions.size
+    const maxCorrelated = 3 // Maximum correlated positions
+    
+    if (correlatedPositions >= maxCorrelated) {
+      return 0.5 // Reduce position size if too many correlated positions
+    }
+    
+    return 1.0 - (correlatedPositions * 0.1) // Slight reduction per correlated position
+  }
+
+  // Drawdown-based risk adjustment
+  getDrawdownAdjustment() {
+    const currentDrawdown = this.maxDrawdown
+    
+    if (currentDrawdown > 0.1) { // 10% drawdown
+      return 0.5 // Reduce position size by 50%
+    } else if (currentDrawdown > 0.05) { // 5% drawdown
+      return 0.7 // Reduce position size by 30%
+    } else if (currentDrawdown > 0.02) { // 2% drawdown
+      return 0.9 // Reduce position size by 10%
+    }
+    
+    return 1.0 // No adjustment
+  }
+
+  // Advanced risk checks before opening position
+  canOpenPosition(symbol, side, size, entryPrice, metadata = {}) {
     const checks = {
       emergencyStop: !this.config.emergencyStop,
       maxPositions: this.positions.length < this.config.maxPositions,
       dailyLoss: this.dailyPnL > -this.account.equity * this.config.maxDailyLoss,
       drawdown: this.maxDrawdown < this.config.maxDrawdown,
       margin: this.hasEnoughMargin(size, entryPrice),
-      correlation: this.checkCorrelation(symbol, side)
+      correlation: this.checkCorrelation(symbol, side),
+      volatility: this.checkVolatilityRisk(symbol, metadata),
+      concentration: this.checkConcentrationRisk(symbol, size),
+      timeBased: this.checkTimeBasedRisk(),
+      strategy: this.checkStrategyRisk(metadata.strategy),
+      confidence: this.checkConfidenceRisk(metadata.confidence),
+      marketHours: this.checkMarketHours(),
+      newsEvents: this.checkNewsEvents(),
+      liquidity: this.checkLiquidityRisk(symbol, size)
     }
 
     const canOpen = Object.values(checks).every(check => check === true)
@@ -106,11 +220,133 @@ class RiskManager {
         side,
         size,
         entryPrice,
-        checks
+        checks,
+        metadata
       })
     }
 
     return { canOpen, checks }
+  }
+
+  // Volatility risk check
+  checkVolatilityRisk(symbol, metadata) {
+    const volatility = metadata.volatility || 0.1
+    const maxVolatility = 0.5 // 50% max volatility
+    
+    if (volatility > maxVolatility) {
+      this.logger.risk('HIGH_VOLATILITY', {
+        symbol,
+        volatility,
+        maxVolatility
+      })
+      return false
+    }
+    
+    return true
+  }
+
+  // Concentration risk check
+  checkConcentrationRisk(symbol, size) {
+    const totalExposure = Array.from(this.positions.values())
+      .reduce((sum, pos) => sum + (pos.size * pos.currentPrice), 0)
+    
+    const newExposure = size * (this.account.equity / 10000) // Normalize
+    const totalAfterNew = totalExposure + newExposure
+    const maxExposure = this.account.equity * 0.5 // 50% max total exposure
+    
+    if (totalAfterNew > maxExposure) {
+      this.logger.risk('EXCESSIVE_EXPOSURE', {
+        symbol,
+        currentExposure: totalExposure,
+        newExposure,
+        totalAfterNew,
+        maxExposure
+      })
+      return false
+    }
+    
+    return true
+  }
+
+  // Time-based risk check
+  checkTimeBasedRisk() {
+    const now = new Date()
+    const hour = now.getHours()
+    const day = now.getDay()
+    
+    // Avoid trading during low liquidity hours (22:00-02:00 UTC)
+    if (hour >= 22 || hour <= 2) {
+      this.logger.risk('LOW_LIQUIDITY_HOURS', { hour })
+      return false
+    }
+    
+    // Avoid trading on weekends
+    if (day === 0 || day === 6) {
+      this.logger.risk('WEEKEND_TRADING', { day })
+      return false
+    }
+    
+    return true
+  }
+
+  // Strategy-specific risk check
+  checkStrategyRisk(strategy) {
+    const riskyStrategies = ['scalping_momentum', 'news_sentiment', 'economic_calendar']
+    
+    if (riskyStrategies.includes(strategy)) {
+      // Additional checks for risky strategies
+      if (this.positions.size > 5) {
+        this.logger.risk('TOO_MANY_RISKY_POSITIONS', { strategy, positionCount: this.positions.size })
+        return false
+      }
+    }
+    
+    return true
+  }
+
+  // Confidence risk check
+  checkConfidenceRisk(confidence) {
+    const minConfidence = 0.6
+    
+    if (confidence < minConfidence) {
+      this.logger.risk('LOW_CONFIDENCE', { confidence, minConfidence })
+      return false
+    }
+    
+    return true
+  }
+
+  // Market hours check
+  checkMarketHours() {
+    const now = new Date()
+    const hour = now.getHours()
+    const day = now.getDay()
+    
+    // Forex market is closed on weekends
+    if (day === 0 || day === 6) {
+      return false
+    }
+    
+    // Check for major market sessions
+    const isLondonSession = hour >= 7 && hour < 16
+    const isNewYorkSession = hour >= 12 && hour < 21
+    const isTokyoSession = hour >= 0 && hour < 9
+    
+    return isLondonSession || isNewYorkSession || isTokyoSession
+  }
+
+  // News events check
+  checkNewsEvents() {
+    // This would integrate with economic calendar
+    // For now, return true (no news events)
+    return true
+  }
+
+  // Liquidity risk check
+  checkLiquidityRisk(symbol, size) {
+    // This would check actual market liquidity
+    // For now, return true (assume sufficient liquidity)
+    return true
   }
 
   hasEnoughMargin(size, price) {

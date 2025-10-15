@@ -6,6 +6,7 @@ import { MetricsCollector } from '../monitoring/metrics.js'
 import { AdvancedStrategies } from '../strategies/advanced-strategies.js'
 import { MultiTimeframeAnalysis } from '../analysis/multi-timeframe.js'
 import { MarketScanner } from '../scanner/market-scanner.js'
+import { RiskMonitor } from '../safety/risk-monitor.js'
 import { v4 as uuidv4 } from 'uuid'
 
 class TradingEngine {
@@ -21,6 +22,7 @@ class TradingEngine {
     this.strategies = new AdvancedStrategies()
     this.multiTimeframe = new MultiTimeframeAnalysis(dataManager)
     this.marketScanner = new MarketScanner(dataManager)
+    this.riskMonitor = new RiskMonitor()
     
     this.isRunning = false
     this.tradingMode = 'paper'
@@ -124,6 +126,9 @@ class TradingEngine {
     // Start market scanner
     await this.marketScanner.startScanning(30000) // Scan every 30 seconds
     
+    // Start risk monitoring
+    this.riskMonitor.startMonitoring(5000) // Monitor every 5 seconds
+    
     // Start trading loop
     this.startTradingLoop()
     
@@ -144,6 +149,9 @@ class TradingEngine {
     
     // Stop market scanner
     this.marketScanner.stopScanning()
+    
+    // Stop risk monitoring
+    this.riskMonitor.stopMonitoring()
     
     // Clear intervals
     if (this.tradingInterval) {
@@ -227,20 +235,49 @@ class TradingEngine {
       return
     }
     
+    // Update risk monitoring metrics
+    this.updateRiskMetrics()
+    
+    // Check risk level and circuit breakers
+    const riskSummary = this.riskMonitor.getRiskSummary()
+    if (riskSummary.riskLevel === 'critical') {
+      this.logger.warn('Critical risk level detected, skipping trading cycle')
+      return
+    }
+    
     // Update positions
     await this.updatePositions()
     
     // Check for exit signals
     await this.checkExitSignals()
     
-    // Check for entry signals
-    await this.checkEntrySignals()
+    // Check for entry signals (only if risk level allows)
+    if (riskSummary.riskLevel !== 'high') {
+      await this.checkEntrySignals()
+    } else {
+      this.logger.debug('High risk level, skipping entry signals')
+    }
     
     // Update performance metrics
     this.updatePerformanceMetrics()
     
     // Emit updates to frontend
     this.emitUpdates()
+  }
+
+  updateRiskMetrics() {
+    const metrics = {
+      dailyPnL: this.performance.totalPnL,
+      maxDrawdown: this.performance.maxDrawdown,
+      winRate: this.performance.winRate,
+      sharpeRatio: this.performance.sharpeRatio,
+      totalTrades: this.performance.totalTrades,
+      winningTrades: this.performance.winningTrades,
+      losingTrades: this.performance.losingTrades,
+      account: this.balance
+    }
+    
+    this.riskMonitor.updateMetrics(metrics)
   }
 
   async updatePositions() {
@@ -613,6 +650,7 @@ class TradingEngine {
       this.io.emit('metrics_update', this.metricsCollector.getSummary())
       this.io.emit('opportunities_update', this.opportunities)
       this.io.emit('alerts_update', this.alerts)
+      this.io.emit('risk_update', this.riskMonitor.getRiskSummary())
     }
   }
 
