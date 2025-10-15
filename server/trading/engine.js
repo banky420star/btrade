@@ -7,6 +7,9 @@ import { AdvancedStrategies } from '../strategies/advanced-strategies.js'
 import { MultiTimeframeAnalysis } from '../analysis/multi-timeframe.js'
 import { MarketScanner } from '../scanner/market-scanner.js'
 import { RiskMonitor } from '../safety/risk-monitor.js'
+import { PerformanceOptimizer } from '../optimization/performance-optimizer.js'
+import { MonitoringDashboard } from '../monitoring/dashboard.js'
+import { ExecutionEngine } from '../execution/execution-engine.js'
 import { v4 as uuidv4 } from 'uuid'
 
 class TradingEngine {
@@ -23,6 +26,9 @@ class TradingEngine {
     this.multiTimeframe = new MultiTimeframeAnalysis(dataManager)
     this.marketScanner = new MarketScanner(dataManager)
     this.riskMonitor = new RiskMonitor()
+    this.performanceOptimizer = new PerformanceOptimizer()
+    this.monitoringDashboard = new MonitoringDashboard()
+    this.executionEngine = new ExecutionEngine()
     
     this.isRunning = false
     this.tradingMode = 'paper'
@@ -129,6 +135,12 @@ class TradingEngine {
     // Start risk monitoring
     this.riskMonitor.startMonitoring(5000) // Monitor every 5 seconds
     
+    // Start monitoring dashboard
+    this.monitoringDashboard.start(5000) // Update every 5 seconds
+    
+    // Start performance optimization
+    this.startPerformanceOptimization()
+    
     // Start trading loop
     this.startTradingLoop()
     
@@ -152,6 +164,9 @@ class TradingEngine {
     
     // Stop risk monitoring
     this.riskMonitor.stopMonitoring()
+    
+    // Stop monitoring dashboard
+    this.monitoringDashboard.stop()
     
     // Clear intervals
     if (this.tradingInterval) {
@@ -278,6 +293,37 @@ class TradingEngine {
     }
     
     this.riskMonitor.updateMetrics(metrics)
+  }
+
+  // Start performance optimization
+  startPerformanceOptimization() {
+    // Run optimization every 5 minutes
+    this.optimizationInterval = setInterval(async () => {
+      try {
+        await this.runPerformanceOptimization()
+      } catch (error) {
+        this.logger.error('Error in performance optimization', { error: error.message })
+      }
+    }, 300000) // 5 minutes
+  }
+
+  // Run performance optimization
+  async runPerformanceOptimization() {
+    this.logger.info('Running performance optimization')
+    
+    const optimizations = await this.performanceOptimizer.optimizeExecution(this)
+    
+    if (optimizations.length > 0) {
+      this.logger.info(`Applied ${optimizations.length} performance optimizations`)
+      
+      // Emit optimization update
+      if (this.io) {
+        this.io.emit('optimization_update', {
+          optimizations,
+          timestamp: new Date().toISOString()
+        })
+      }
+    }
   }
 
   async updatePositions() {
@@ -436,6 +482,23 @@ class TradingEngine {
       // Adjust position size based on confidence and analysis
       const adjustedSize = recommendations.recommendedSize * riskMultiplier * (metadata.confidence || 1.0)
       
+      // Create execution for position entry
+      const executionId = await this.executionEngine.addExecution({
+        type: 'market_order',
+        priority: (metadata.confidence || 0.5) > 0.8 ? 'high' : 'medium',
+        parameters: {
+          symbol,
+          side: action,
+          size: adjustedSize,
+          price
+        },
+        metadata: {
+          strategy: metadata.strategy || 'unknown',
+          confidence: metadata.confidence || 0.5,
+          analysis: analysis
+        }
+      })
+      
       // Create position with advanced metadata
       const positionId = uuidv4()
       const position = {
@@ -449,7 +512,9 @@ class TradingEngine {
         takeProfit: recommendations.takeProfit,
         pnl: 0,
         pnlPercent: 0,
+        status: 'pending',
         timestamp: new Date().toISOString(),
+        executionId,
         metadata: {
           strategy: metadata.strategy || 'unknown',
           reason: metadata.reason || 'ML signal',
@@ -651,6 +716,8 @@ class TradingEngine {
       this.io.emit('opportunities_update', this.opportunities)
       this.io.emit('alerts_update', this.alerts)
       this.io.emit('risk_update', this.riskMonitor.getRiskSummary())
+      this.io.emit('dashboard_update', this.monitoringDashboard.getDashboardData())
+      this.io.emit('execution_update', this.executionEngine.getExecutionStats())
     }
   }
 
